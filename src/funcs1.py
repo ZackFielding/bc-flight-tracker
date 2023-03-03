@@ -1,9 +1,13 @@
 import sqlite3
+import requests
+import time
 
 
 def dbConnectAndSetUp(db_con, db_c):
-    known_tbl_set = {"tbl_historical_aircraft_data",
-                     "tbl_current_flights", "tbl_airline_id"}
+    from create_table_queries import create_table_queries_dict
+
+    # create set from keys of dict which calls correct SQL queries
+    known_tbl_set = set(iter(create_table_queries_dict))
 
     # get all tables from master schema table
     db_c.execute("SELECT name FROM sqlite_master")
@@ -37,3 +41,56 @@ def dbCreateTables(db_c, db_con, tbl_set):
     print("Tables added ... ", end=" ")
     for tbl in db_c.fetchall():
         print(tbl)
+
+    # api_call_tracker will only have one row => create this row
+    # determine proper time values
+    # current unix time - known time of 3/3/23 floored by seconds/day
+    times = getStartAndUpdateTimes()
+    db_c.execute((
+        "INSERT INTO tbl_api_call_tracker VALUES({}, {}, {}, NULL, NULL);"
+        .format(0, times[0], times[1])
+        ))
+    db_con.commit()
+
+
+def getStartAndUpdateTimes():
+    days_elapsed = ((time.time() - 1677830400) // 86400)
+    adj_start_time = 1677830400 + (86400 * days_elapsed)
+    time_to_update = adj_start_time + 86400
+    return adj_start_time, time_to_update
+
+
+# could be changed to accept defualt args for lat/long vars
+def reqOpenApi(db_c, db_con, coord):
+    # check api caller
+    db_c.execute("SELECT * FROM tbl_api_call_tracker")
+    api_track_tup = db_c.fetchone()
+
+    if time.time() > api_track_tup[2]:
+        # if daily time limit exceeded => get updated times limits
+        times = getStartAndUpdateTimes()
+        # first value will be daily_count
+        db_c.execute((
+            """UPDATE tbl_api_call_tracker
+            SET daily_count={}, time_start={}, time_to_reset={}"""
+            .format(0, times[0], times[1])))
+        # commit changes to db
+        db_con.commit()
+    elif api_track_tup[0] >= 4000:
+        print("Max number of daily \'GET STATE\' API calls made.")
+        # FAILED api call returns empty list
+        return []
+
+    from open_api_auth import auth_info
+    api_ad = "https://opensky-network.org/api/states/all"
+    req = requests.get(api_ad, auth=auth_info, params=coord)
+
+    # update db with time and correct call count
+    db_c.execute((
+        """UPDATE tbl_api_call_tracker
+        SET daily_count=daily_count+1, last_call={}"""
+        .format(time.time())))
+    db_con.commit()
+
+    print(req.url)
+    return req.json()["states"]
