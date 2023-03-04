@@ -147,13 +147,16 @@ class fixed_sized_dict():
         return key in self.fixed_dict
 
 
-# multithread safe [to optimize]
-def getICAOAsInt(states, icao_dict):
+# this has been modified for them previous commit for multiprocessing
+# unknown if this block in isolation works
+def getICAOAsInt(states, spos, epos, icao_shared, fsd_lock):
     # iterate over each frame in api
-    for frame in states:
-        if icao_dict.check_existance(frame[0]):
-            frame[0] = icao_dict.get_value(frame[0])
+    for idx in range(spos, epos):
+        if icao_shared.value.check_existance(states[idx][0]):
+            states[idx][0] = icao_shared.value.get_value(states[idx][0])
         else:
-            base10_icao = hexToInt(frame[0])
-            icao_dict.insert_value(frame[0], base10_icao)
-            frame[0] = base10_icao
+            base10_icao = hexToInt(states[idx][0])
+            fsd_lock.aquire()  # lock shared to insert new key-value
+            icao_shared.value.insert_value(states[idx][0], base10_icao)
+            fsd_lock.release()  # release lock
+            states[idx][0] = base10_icao
