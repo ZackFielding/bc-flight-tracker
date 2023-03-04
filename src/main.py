@@ -24,7 +24,12 @@ def main():
                      "lamax": "60.3", "lomax": "-113.7"}
     states = funcs1.reqOpenApi(db_c, db_con, bc_coord_dict)
 
-    # testing
+    # init fixed sized dict of icao codes to reduce
+    # need for hex => int conversion after each API call
+    icao_dict = funcs1.fixed_sized_dict(50)
+    funcs1.getICAOAsInt(states, icao_dict)
+
+    # `states` now has base 10 integer for ICAO
     for frame in states:
         print(frame)
 

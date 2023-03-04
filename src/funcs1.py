@@ -1,6 +1,8 @@
 import sqlite3
 import requests
 import time
+from enum import Enum
+from collections import deque
 
 
 def dbConnectAndSetUp(db_con, db_c):
@@ -94,3 +96,64 @@ def reqOpenApi(db_c, db_con, coord):
 
     print(req.url)
     return req.json()["states"]
+
+
+# used for hex conversion
+class hex(Enum):
+    a = 10
+    b = 11
+    c = 12
+    d = 13
+    e = 14
+    f = 15
+
+
+def hexToInt(hex_str):
+    ires = 0
+    exp = 0
+    mult = 0
+    for riter in reversed(hex_str):
+        if riter.isalpha():
+            mult = hex[riter].value
+        else:
+            mult = int(riter)
+        ires += mult * 16 ** exp
+        exp += 1
+    return ires
+
+
+class fixed_sized_dict():
+    def __init__(self, asize):
+        self.max_size = asize
+        self.fixed_dict = dict()
+        self.queue = deque()  # keep track of what's not been used recently
+
+    def insert_value(self, key, value):
+        # hash key-value
+        self.fixed_dict[key] = value
+        # append to rhs of queue
+        self.queue.append(key)
+
+        # if max dictionary size reached
+        # delete the last element to be used (left size of deque)
+        if len(self.fixed_dict) > self.max_size:
+            print("Removing dictionary element to maintain size...")
+            del self.fixed_dict[self.queue.popleft()]
+
+    def get_value(self, key):
+        return self.fixed_dict[key]
+
+    def check_existance(self, key):
+        return key in self.fixed_dict
+
+
+# multithread safe [to optimize]
+def getICAOAsInt(states, icao_dict):
+    # iterate over each frame in api
+    for frame in states:
+        if icao_dict.check_existance(frame[0]):
+            frame[0] = icao_dict.get_value(frame[0])
+        else:
+            base10_icao = hexToInt(frame[0])
+            icao_dict.insert_value(frame[0], base10_icao)
+            frame[0] = base10_icao
