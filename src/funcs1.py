@@ -3,6 +3,7 @@ import requests
 import time
 from enum import Enum
 from collections import deque
+import multiprocessing
 
 
 def dbConnectAndSetUp(db_con, db_c):
@@ -122,41 +123,7 @@ def hexToInt(hex_str):
     return ires
 
 
-class fixed_sized_dict():
-    def __init__(self, asize):
-        self.max_size = asize
-        self.fixed_dict = dict()
-        self.queue = deque()  # keep track of what's not been used recently
-
-    def insert_value(self, key, value):
-        # hash key-value
-        self.fixed_dict[key] = value
-        # append to rhs of queue
-        self.queue.append(key)
-
-        # if max dictionary size reached
-        # delete the last element to be used (left size of deque)
-        if len(self.fixed_dict) > self.max_size:
-            print("Removing dictionary element to maintain size...")
-            del self.fixed_dict[self.queue.popleft()]
-
-    def get_value(self, key):
-        return self.fixed_dict[key]
-
-    def check_existance(self, key):
-        return key in self.fixed_dict
-
-
-# this has been modified for them previous commit for multiprocessing
-# unknown if this block in isolation works
-def getICAOAsInt(states, spos, epos, icao_shared, fsd_lock):
+def getICAOAsInt(states):
     # iterate over each frame in api
-    for idx in range(spos, epos):
-        if icao_shared.value.check_existance(states[idx][0]):
-            states[idx][0] = icao_shared.value.get_value(states[idx][0])
-        else:
-            base10_icao = hexToInt(states[idx][0])
-            fsd_lock.aquire()  # lock shared to insert new key-value
-            icao_shared.value.insert_value(states[idx][0], base10_icao)
-            fsd_lock.release()  # release lock
-            states[idx][0] = base10_icao
+    for state in states:
+        state[0] = hexToInt(state[0])
