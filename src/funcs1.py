@@ -1,9 +1,6 @@
-import sqlite3
 import requests
 import time
 from enum import Enum
-from collections import deque
-import multiprocessing
 
 
 def dbConnectAndSetUp(db_con, db_c):
@@ -87,6 +84,16 @@ def reqOpenApi(db_c, db_con, coord):
     from open_api_auth import auth_info
     api_ad = "https://opensky-network.org/api/states/all"
     req = requests.get(api_ad, auth=auth_info, params=coord)
+
+    # invalid response from API will cause crash when parsing JSON
+    # wait for valid response
+    while req.status_code != 200:
+        print(f"Invalid ({req.status_code}) response from API call \
+                ... calling again in 10 seconds.")
+        for _ in range(10):
+            print(".", end=" ")
+            time.sleep(1)
+        req = requests.get(api_ad, auth=auth_info, params=coord)
 
     # update db with time and correct call count
     db_c.execute((
