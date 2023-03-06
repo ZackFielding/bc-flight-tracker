@@ -17,6 +17,9 @@ class flight():
         self.contact_counter = 0
         self.longitude = int(state[5])
         self.latitude = int(state[6])
+        # computed using haversine function
+        # once a second distance comes in
+        self.total_distance = 0
 
         # remainder of attributes depend on if plane is on ground
         if state[8] == "false":
@@ -46,13 +49,14 @@ class flight():
             self.airline = tup[1]
 
     @classmethod
-    def updateFlights(cls, states_list):
+    def updateCurrentFlights(cls, states_list):
         api_set = set()
         # add or update current flights
         for state in states:
             api_set.add(state[0])
             if state[0] in cls.cur_flight_dict:
                 # call _updateFlights member method
+                flight.updateFlight(cls.cur_flight_dict[state[0]], state)
             else:
                 # create new flight
                 flight(state)
@@ -64,3 +68,36 @@ class flight():
 
                 # remove
                 # del cls.cur_flight_dict[a]
+
+    @classmethod
+    def updateFlight(cls, flight, state):
+        # update last contact time
+        flight.last_contact_epoch = state[4]
+        # update contact counter
+        flight.contact_counter += 1
+        # update long and latitude
+        flight.longitude = state[5]
+        flight.latitude = state[6]
+
+        # compute and update distance
+        flight.total_distance += haversine(
+                (flight.longitude, int(state[5]),
+                 flight.latitude, int(state[6])))
+
+
+# haversine assums a perfect sphere => the earth is not
+# but this should be accurate up to 0.5% error (good enough for this impl.)
+def haversine(long_prev, long_cur, lat_prev, lat_cur):
+    from math import sin, cos, sqrt, asin
+
+    # current = 2, previous = 1
+    # cur - prev
+    def sin_sq(cur, prev):
+        return sin((cur-prev)/2) ** 2
+
+    earth_radius = 6356.7523142
+
+    # need to convert coord from degrees => radians!!!!!!!!!
+    a = 2 * earth_radius * asin(sqrt(sin_sq(lat_cur, lat_rev)
+                                     + cos(lat_prev) * cos(lat_cur)
+                                     * sin_sq(long_cur, long_prev)))
