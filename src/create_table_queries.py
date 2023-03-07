@@ -20,7 +20,7 @@ cur_flights = (
 airline_id = (
     """CREATE TABLE tbl_airline_id(
     ICAO_airline_id TEXT UNIQUE NOT NULL,
-    full_text_airline UNIQUE TEXT NOT NULL
+    full_text_airline TEXT NOT NULL
     );""")
 
 api_call_tracker = (

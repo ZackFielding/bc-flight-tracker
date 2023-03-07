@@ -91,7 +91,7 @@ def reqOpenApi(db_c, db_con, coord):
         print(f"Invalid ({req.status_code}) response from API call \
                 ... calling again in 10 seconds.")
         for _ in range(10):
-            print(".", end=" ")
+            print(".", end=" ", flush=True)
             time.sleep(1)
         req = requests.get(api_ad, auth=auth_info, params=coord)
 
@@ -102,7 +102,7 @@ def reqOpenApi(db_c, db_con, coord):
         .format(time.time())))
     db_con.commit()
 
-    print(req.url)
+    # print(req.url)
     return req.json()["states"]
 
 
