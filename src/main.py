@@ -33,10 +33,12 @@ if __name__ == "__main__":
     api_call_count = 1
     while api_call_count < 60:
         # testing only => will be automated post-test
-        print("{}. Waiting for next API call".format(api_call_count), end=" ")
+        print("Waiting for next API call", end=" ")
         for _ in range(30):
             print(".", end="", flush=True)
             time.sleep(2)
+
+        print("\n", end="")
 
         # get states => convert to int => update current flight class
         states = funcs1.reqOpenApi(db_c, db_con, bc_coord_dict)

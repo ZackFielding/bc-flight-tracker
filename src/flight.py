@@ -5,10 +5,10 @@ class flight():
     def __init__(self, state, db_con):
         self.icao = state[0]
         self.call_sign = state[1]
-        self.airline = self.getAirline(db_con)
+        self.setAirline(db_con)
         self.origin_country = state[2]
         self.last_contact_epoch = int(state[4])
-        self.contact_counter = 0
+        self.contact_counter = 1
         self.longitude = int(state[5])
         self.latitude = int(state[6])
         # computed using haversine function
@@ -28,7 +28,7 @@ class flight():
             self.velocity = [0]
             self.heading = []
 
-    def getAirline(self, db_con):
+    def setAirline(self, db_con):
         # insert airline into id table if it isn't already
         icao_airline_code = self.call_sign[:3]
         db_c = db_con.cursor()
@@ -47,7 +47,7 @@ class flight():
                      """, (icao_airline_code,))
 
         # set airline attibute to assoc full airline string
-        self.airline = db_c.fetchone()[0]
+        self.airline = (db_c.fetchone())[0]
 
     def updateFlight(self, state):
         # update last contact time
@@ -125,7 +125,13 @@ class current_flights():
                         )
 
         # remove any flights that are gone since last api call
-        for a in current_flights.cur_flight_dict.keys():
+        # create list of cur flights => view will cause run time error
+        # due to deletions (cur_flights_dict should not be very big)
+        # TO DO:
+        # filter flights => only add flights that have had at least
+        # 2 air measurements
+        count_flights_removed = 0
+        for a in list(current_flights.cur_flight_dict):
             if a not in api_set:
                 # get flight instance
                 flight_instance = current_flights.cur_flight_dict[a]
@@ -146,23 +152,25 @@ class current_flights():
 
                 # [first time program has seen this airframe]
                 # create table for if it doesn't exist
-                # ? does not work outside of VALUES
+                # table names that are integers need explicit quotes
+                icao_string_formatted = "'{}'".format(flight_instance.icao)
                 db_c.execute("""
-                            CREATE TABLE IF NOT EXISTS ?(
+                            CREATE TABLE IF NOT EXISTS {}(
                                 call_sign TEXT NOT NULL,
                                 airline TEXT NOT NULL,
                                 origin_country TEXT NOT NULL,
-                                contact_counter INTEGER.
+                                contact_counter INTEGER,
                                 ground_distance INTEGER,
                                 max_altitude INTEGER,
                                 avg_velocity INTEGER,
                                 heading_array BLOB
                                 );
-                             """, (flight_instance.icao, ))
+                             """.format(icao_string_formatted))
 
-                flight.db_con.commit()
+                current_flights.db_con.commit()
 
-                db_c.execute("INSERT INTO ? VALUES(?,?,?,?,?,?,?,?);",
+                db_c.execute("""INSERT INTO {} VALUES(?,?,?,?,?,?,?,?);"""
+                             .format(icao_string_formatted),
                              (flight_instance.call_sign,
                               flight_instance.airline,
                               flight_instance.origin_country,
@@ -177,3 +185,8 @@ class current_flights():
 
                 # remove from current flights dictionary
                 del current_flights.cur_flight_dict[a]
+
+                count_flights_removed += 1
+
+        print("[%d] flights added to historical database."
+              % count_flights_removed)
