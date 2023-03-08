@@ -5,7 +5,10 @@ class flight():
     def __init__(self, state, db_con):
         self.icao = state[0]
         self.call_sign = state[1]
+        # async?
         self.setAirline(db_con)
+        self.setAirframe(db_con)
+        # ####
         self.origin_country = state[2]
         self.last_contact_epoch = int(state[4])
         self.contact_counter = 1
@@ -28,6 +31,30 @@ class flight():
             self.velocity = [0]
             self.heading = []
 
+    def setAirframe(self, db_con):
+        db_c = db_con.cursor()
+        # create new row if aircraft has not been seen
+        # aircraft itself, NOT ITS TYPE
+        db_c.execute("""
+                    INSERT INTO tbl_airframe_id
+                    VALUES(?,?,?)
+                    ON CONFLICT(ICAO_id)
+                    DO NOTHING;
+
+                    SELECT airframe FROM tbl_airframe_id
+                    WHERE ICAO_id=?;
+                    """, (self.icao, "missing", self.airline, self.icao))
+        db_con.commit()
+        self.airframe = (db_con.fetchone())[0]
+
+    def checkForAirframe(self, db_con):
+        db_c = db_con.cursor()
+        db_c.execute("SELECT airframe FROM tbl_airframe_id WHERE ICAO=?",
+                     (self.icao,))
+        # assume that it has been updated
+        # take the chance that it's still `missing`
+        self.airframe = (db_c.fetchone())[0]
+
     def setAirline(self, db_con):
         # insert airline into id table if it isn't already
         icao_airline_code = self.call_sign[:3]
@@ -37,19 +64,17 @@ class flight():
                      VALUES(?, "missing")
                      ON CONFLICT(ICAO_airline_id)
                      DO NOTHING;
-                     """, (icao_airline_code,))
-        db_con.commit()
 
-        # return assoc. full airline string
-        db_c.execute("""
                      SELECT full_text_airline FROM tbl_airline_id
                      WHERE ICAO_airline_id=?
-                     """, (icao_airline_code,))
+                     """, (icao_airline_code, icao_airline_code))
+        db_con.commit()
 
         # set airline attibute to assoc full airline string
         self.airline = (db_c.fetchone())[0]
 
-    def updateFlight(self, state):
+    def updateFlight(self, state, db_con):
+        self.checkForAirframe(db_con)
         # update last contact time
         self.last_contact_epoch = state[4]
         # update contact counter
@@ -116,7 +141,11 @@ class current_flights():
             # get flight instance && call its update member func
             if state[0] in current_flights.cur_flight_dict:
                 flight_instance = current_flights.cur_flight_dict[state[0]]
-                flight_instance.updateFlight(state)
+
+                # NOT TESTED wt/ checkForAirframe()
+                # currently passing db connection => might be better to
+                # create class wide attributes to create cursors from
+                flight_instance.updateFlight(state, current_flights.db_con)
             else:
                 # create new flight
                 current_flights.cur_flight_dict[state[0]] = flight(
@@ -157,6 +186,7 @@ class current_flights():
                 db_c.execute("""
                             CREATE TABLE IF NOT EXISTS {}(
                                 call_sign TEXT NOT NULL,
+                                airframe TEXT NOT NULL,
                                 airline TEXT NOT NULL,
                                 origin_country TEXT NOT NULL,
                                 contact_counter INTEGER,
@@ -169,9 +199,10 @@ class current_flights():
 
                 current_flights.db_con.commit()
 
-                db_c.execute("""INSERT INTO {} VALUES(?,?,?,?,?,?,?,?);"""
+                db_c.execute("""INSERT INTO {} VALUES(?,?,?,?,?,?,?,?,?);"""
                              .format(icao_string_formatted),
                              (flight_instance.call_sign,
+                              flight_instance.airframe,
                               flight_instance.airline,
                               flight_instance.origin_country,
                               flight_instance.contact_counter,
@@ -182,6 +213,24 @@ class current_flights():
                              )
 
                 current_flights.db_con.commit()
+
+                # UPSERT into historical database
+                db_c.execute("""
+                             INSERT INTO tbl_historical_aircraft_data
+                             VALUES(?,?,?,?,?,?)
+                             ON CONFLICT(ICAO_id)
+                             DO UPDATE SET trip_counter=trip_counter+1,
+                             ping_counter=ping_counter+?,
+                             total_distance_across_flights=total_distance_across_flights+?;
+                             """,
+                             (flight_instance.icao,
+                              flight_instance.airframe,
+                              flight_instance.airline,
+                              1,
+                              flight_instance.contact_counter,
+                              flight_instance.total_distance,
+                              flight_instance.contact_counter,
+                              flight_instance.total_distance))
 
                 # remove from current flights dictionary
                 del current_flights.cur_flight_dict[a]

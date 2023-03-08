@@ -132,5 +132,39 @@ def hexToInt(hex_str):
 
 def getICAOAsInt(states):
     # iterate over each frame in api
+    hex_int_icao_tup = []
     for state in states:
+        hex_state = state[0]
         state[0] = hexToInt(state[0])
+        hex_int_icao_tup.append((state[0], hex_state))
+    # returns list of tuples assoc. hex with integer codes
+    return hex_int_icao_tup
+
+
+# NOT TESTED
+# idea is for this to run in while waiting
+# for the next state API call
+# goal is to automate binding of the plane ICAO with its ICAO type
+def updateAirframesDB(db_con, hex_icao_list):
+    # make calls to ADSB One API
+    # use these calls to update airframes
+    db_c = db_con.cursor()
+    for pair in hex_icao_list:
+        frame_request = "https://api.adsb.one/v2/hex/{}".format(pair[1])
+        airframe_req = requests.get(frame_request)
+        # get airframe
+        af = airframe_req.json()["ac"]
+        if "t" in af:
+            frame_type = af["t"]
+            # update db
+            db_c.execute("""
+                         UPDATE tbl_airframe_id
+                         SET airframe=?
+                         WHERE ICAO_id=?;
+
+                         UPDATE tbl_historical_aircraft_data
+                         SET airframe=?
+                         WHERE ICAO_id=?;
+                         """, (frame_type, pair[0], frame_type, pair[0])
+                         )
+            db_con.commit()
